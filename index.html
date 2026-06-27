@@ -40,19 +40,17 @@
     </div>
 
     <script>
-        // ========== CORS 代理配置 ==========
-        // 你可以替换成自己搭建的代理，或者用公共的（可能不稳定）
-        const CORS_PROXY = 'https://corsproxy.io/?';  // 公共代理，可能限流
-        // 备选：'https://api.allorigins.win/raw?url='
-        // 如果都不可用，需要自行搭建代理服务（如 Cloudflare Workers）
+        // ========== 使用你自己的 Cloudflare Worker 代理 ==========
+        const CORS_PROXY = 'https://music.1175199461.workers.dev/?url=';
 
         async function fetchWithProxy(url) {
-            // 某些 API 允许跨域，先直接尝试
+            // 先尝试直接请求（部分 API 可能已支持 CORS）
             try {
                 const directResp = await fetch(url);
                 if (directResp.ok) return directResp;
-            } catch (e) {}
-            // 通过代理
+            } catch (e) { /* 忽略，走代理 */ }
+
+            // 使用 Worker 代理
             const proxyUrl = CORS_PROXY + encodeURIComponent(url);
             const resp = await fetch(proxyUrl);
             if (!resp.ok) throw new Error(`代理请求失败: ${resp.status}`);
@@ -99,6 +97,7 @@
         }
 
         async function searchKugou(keyword) {
+            // 注意：酷狗 API 是 HTTP，Worker 会正常代理
             const url = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(keyword)}&page=1&pagesize=10&showtype=1`;
             const resp = await fetchWithProxy(url);
             const data = await resp.json();
@@ -117,9 +116,9 @@
             return [];
         }
 
-        // Spotify 需要 OAuth Token，暂时跳过，或显示不可用
+        // Spotify 暂未集成（需要后端 Token 刷新），你可以按需扩展
 
-        // ========== 聚合与渲染 ==========
+        // ========== 聚合与归一化 ==========
         function normalize(text) {
             return text.toLowerCase()
                 .replace(/（[^）]*）/g, '')
@@ -147,6 +146,7 @@
             return Object.values(map).sort((a, b) => b.platforms.length - a.platforms.length);
         }
 
+        // ========== 搜索入口 ==========
         async function search() {
             const kw = document.getElementById('keyword').value.trim();
             if (!kw) return;
@@ -164,10 +164,11 @@
                 const aggregated = aggregate(validResults);
                 render(aggregated.slice(0, 20));
             } catch (e) {
-                document.getElementById('results').innerHTML = '<div class="error-msg">搜索失败，请检查网络或稍后重试</div>';
+                document.getElementById('results').innerHTML = '<div class="error-msg">搜索失败，请稍后重试</div>';
             }
         }
 
+        // ========== 渲染 ==========
         function render(songs) {
             const container = document.getElementById('results');
             if (!songs.length) {
@@ -180,6 +181,7 @@
                     <div class="song-title">${escapeHtml(song.title)}</div>
                     <div class="song-artist">${escapeHtml(song.artist)} · ${escapeHtml(song.album)}</div>
                     <div class="platform-tags">`;
+                // 按平台顺序展示
                 ['netease', 'qq', 'kugou', 'spotify'].forEach(plat => {
                     const found = song.platforms.find(p => p.platform === plat);
                     if (found) {
@@ -206,9 +208,12 @@
             return d.innerHTML;
         }
 
+        // ========== 深度链接唤起 ==========
         function tryScheme(e, scheme, webUrl) {
             e.preventDefault();
+            // 尝试唤起 App
             window.location.href = scheme;
+            // 如果 2 秒后页面仍存在，说明未安装 App，跳转网页版
             setTimeout(() => {
                 window.open(webUrl, '_blank');
             }, 2000);
