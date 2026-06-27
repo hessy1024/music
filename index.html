@@ -53,68 +53,72 @@
             return resp;
         }
 
-        // 网易云
+        // 网易云（已加校验）
         async function searchNetease(keyword) {
             const url = `https://music.163.com/api/search/get?type=1&s=${encodeURIComponent(keyword)}&limit=10`;
             const resp = await fetchWithProxy(url);
             const data = await resp.json();
-            if (data.code === 200) {
-                return data.result.songs.map(song => ({
-                    platform: 'netease',
-                    platform_name: '网易云',
-                    id: song.id.toString(),
-                    title: song.name,
-                    artist: song.artists.map(a => a.name).join('/'),
-                    album: song.album.name,
-                    url_scheme: `orpheus://song/${song.id}`,
-                    url_web: `https://music.163.com/song?id=${song.id}`
-                }));
+            if (data.code === 200 && Array.isArray(data.result.songs)) {
+                return data.result.songs
+                    .filter(song => song.id && song.name && song.artists && song.artists.length > 0)
+                    .map(song => ({
+                        platform: 'netease',
+                        platform_name: '网易云',
+                        id: String(song.id),
+                        title: song.name,
+                        artist: song.artists.map(a => a.name).join('/'),
+                        album: song.album ? song.album.name : '',
+                        url_scheme: `orpheus://song/${song.id}`,
+                        url_web: `https://music.163.com/song?id=${song.id}`
+                    }));
             }
             return [];
         }
 
-        // QQ音乐
+        // QQ音乐（已加校验）
         async function searchQQ(keyword) {
             const url = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=10&w=${encodeURIComponent(keyword)}&format=json`;
             const resp = await fetchWithProxy(url);
             const data = await resp.json();
-            if (data.code === 0) {
-                return data.data.song.list.map(song => ({
-                    platform: 'qq',
-                    platform_name: 'QQ音乐',
-                    id: song.songmid,
-                    title: song.songname,
-                    artist: song.singer.map(s => s.name).join('/'),
-                    album: song.albumname || '',
-                    url_scheme: `qqmusic://qq.com/media/playSong?mid=${song.songmid}`,
-                    url_web: `https://y.qq.com/n/ryqq/songDetail/${song.songmid}`
-                }));
+            if (data.code === 0 && Array.isArray(data.data.song.list)) {
+                return data.data.song.list
+                    .filter(song => song.songmid && song.songname && song.singer && song.singer.length > 0)
+                    .map(song => ({
+                        platform: 'qq',
+                        platform_name: 'QQ音乐',
+                        id: song.songmid,
+                        title: song.songname,
+                        artist: song.singer.map(s => s.name).join('/'),
+                        album: song.albumname || '',
+                        url_scheme: `qqmusic://qq.com/media/playSong?mid=${song.songmid}`,
+                        url_web: `https://y.qq.com/n/ryqq/songDetail/${song.songmid}`
+                    }));
             }
             return [];
         }
 
-        // 酷狗（修复版）
+        // 酷狗（已加校验，同时保留 album_id 修正）
         async function searchKugou(keyword) {
             const url = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(keyword)}&page=1&pagesize=10&showtype=1`;
             const resp = await fetchWithProxy(url);
             const data = await resp.json();
-            if (data.status === 1) {
-                return data.data.info.map(song => ({
-                    platform: 'kugou',
-                    platform_name: '酷狗',
-                    id: song.hash,
-                    title: song.songname,
-                    artist: song.singername || '',
-                    album: song.album_name || '',
-                    // 修正后的 scheme 和 web 链接
-                    url_scheme: `kugou://song/${song.hash}`,  // 可能仍无效，但会回退到 web
-                    url_web: `https://www.kugou.com/song/#hash=${song.hash}&album_id=${song.album_id}`
-                }));
+            if (data.status === 1 && Array.isArray(data.data.info)) {
+                return data.data.info
+                    .filter(song => song.hash && song.songname)  // 歌名和hash必须存在
+                    .map(song => ({
+                        platform: 'kugou',
+                        platform_name: '酷狗',
+                        id: song.hash,
+                        title: song.songname,
+                        artist: song.singername || '',
+                        album: song.album_name || '',
+                        url_scheme: `kugou://song/${song.hash}`,
+                        url_web: `https://www.kugou.com/song/#hash=${song.hash}&album_id=${song.album_id || ''}`
+                    }));
             }
             return [];
         }
 
-        // 归一化与聚合
         function normalize(text) {
             return text.toLowerCase()
                 .replace(/（[^）]*）/g, '')
@@ -205,7 +209,6 @@
             e.preventDefault();
             window.location.href = scheme;
             setTimeout(() => {
-                // 如果2秒后页面还在，说明没唤起App，跳转网页版
                 window.open(webUrl, '_blank');
             }, 2000);
         }
