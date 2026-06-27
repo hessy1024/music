@@ -53,7 +53,16 @@
             return resp;
         }
 
-        // 网易云（已加校验）
+        // 通用有效性校验：不是纯数字、标题长度≥2、歌手不空
+        function isValidMusicEntry(title, artist) {
+            if (!title || !artist) return false;
+            // 去掉括号内容后判断是否为纯数字或单字符
+            const cleanTitle = title.replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '').trim();
+            if (/^\d+$/.test(cleanTitle) || cleanTitle.length < 2) return false;
+            return true;
+        }
+
+        // 网易云
         async function searchNetease(keyword) {
             const url = `https://music.163.com/api/search/get?type=1&s=${encodeURIComponent(keyword)}&limit=10`;
             const resp = await fetchWithProxy(url);
@@ -67,7 +76,10 @@
                         id: String(song.id),
                         title: song.name,
                         artist: song.artists.map(a => a.name).join('/'),
-                        album: song.album ? song.album.name : '',
+                        album: song.album ? song.album.name : ''
+                    }))
+                    .filter(song => isValidMusicEntry(song.title, song.artist))  // 增强过滤
+                    .map(song => Object.assign(song, {
                         url_scheme: `orpheus://song/${song.id}`,
                         url_web: `https://music.163.com/song?id=${song.id}`
                     }));
@@ -75,7 +87,7 @@
             return [];
         }
 
-        // QQ音乐（已加校验）
+        // QQ音乐
         async function searchQQ(keyword) {
             const url = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=10&w=${encodeURIComponent(keyword)}&format=json`;
             const resp = await fetchWithProxy(url);
@@ -89,31 +101,37 @@
                         id: song.songmid,
                         title: song.songname,
                         artist: song.singer.map(s => s.name).join('/'),
-                        album: song.albumname || '',
-                        url_scheme: `qqmusic://qq.com/media/playSong?mid=${song.songmid}`,
-                        url_web: `https://y.qq.com/n/ryqq/songDetail/${song.songmid}`
+                        album: song.albumname || ''
+                    }))
+                    .filter(song => isValidMusicEntry(song.title, song.artist))
+                    .map(song => Object.assign(song, {
+                        url_scheme: `qqmusic://qq.com/media/playSong?mid=${song.id}`,
+                        url_web: `https://y.qq.com/n/ryqq/songDetail/${song.id}`
                     }));
             }
             return [];
         }
 
-        // 酷狗（已加校验，同时保留 album_id 修正）
+        // 酷狗
         async function searchKugou(keyword) {
             const url = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(keyword)}&page=1&pagesize=10&showtype=1`;
             const resp = await fetchWithProxy(url);
             const data = await resp.json();
             if (data.status === 1 && Array.isArray(data.data.info)) {
                 return data.data.info
-                    .filter(song => song.hash && song.songname)  // 歌名和hash必须存在
+                    .filter(song => song.hash && song.songname)
                     .map(song => ({
                         platform: 'kugou',
                         platform_name: '酷狗',
                         id: song.hash,
                         title: song.songname,
                         artist: song.singername || '',
-                        album: song.album_name || '',
-                        url_scheme: `kugou://song/${song.hash}`,
-                        url_web: `https://www.kugou.com/song/#hash=${song.hash}&album_id=${song.album_id || ''}`
+                        album: song.album_name || ''
+                    }))
+                    .filter(song => isValidMusicEntry(song.title, song.artist))
+                    .map(song => Object.assign(song, {
+                        url_scheme: `kugou://song/${song.id}`,
+                        url_web: `https://www.kugou.com/song/#hash=${song.id}&album_id=${song.album_id || ''}`
                     }));
             }
             return [];
