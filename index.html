@@ -53,10 +53,8 @@
             return resp;
         }
 
-        // 通用有效性校验：不是纯数字、标题长度≥2、歌手不空
         function isValidMusicEntry(title, artist) {
             if (!title || !artist) return false;
-            // 去掉括号内容后判断是否为纯数字或单字符
             const cleanTitle = title.replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '').trim();
             if (/^\d+$/.test(cleanTitle) || cleanTitle.length < 2) return false;
             return true;
@@ -78,7 +76,7 @@
                         artist: song.artists.map(a => a.name).join('/'),
                         album: song.album ? song.album.name : ''
                     }))
-                    .filter(song => isValidMusicEntry(song.title, song.artist))  // 增强过滤
+                    .filter(song => isValidMusicEntry(song.title, song.artist))
                     .map(song => Object.assign(song, {
                         url_scheme: `orpheus://song/${song.id}`,
                         url_web: `https://music.163.com/song?id=${song.id}`
@@ -112,7 +110,7 @@
             return [];
         }
 
-        // 酷狗
+        // 酷狗（优先 share_url，否则智能拼接）
         async function searchKugou(keyword) {
             const url = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(keyword)}&page=1&pagesize=10&showtype=1`;
             const resp = await fetchWithProxy(url);
@@ -120,19 +118,27 @@
             if (data.status === 1 && Array.isArray(data.data.info)) {
                 return data.data.info
                     .filter(song => song.hash && song.songname)
-                    .map(song => ({
-                        platform: 'kugou',
-                        platform_name: '酷狗',
-                        id: song.hash,
-                        title: song.songname,
-                        artist: song.singername || '',
-                        album: song.album_name || ''
-                    }))
-                    .filter(song => isValidMusicEntry(song.title, song.artist))
-                    .map(song => Object.assign(song, {
-                        url_scheme: `kugou://song/${song.id}`,
-                        url_web: `https://www.kugou.com/song/#hash=${song.id}&album_id=${song.album_id || ''}`
-                    }));
+                    .map(song => {
+                        let webUrl = '';
+                        if (song.share_url) {
+                            webUrl = song.share_url;
+                        } else {
+                            const base = `https://www.kugou.com/song/#hash=${song.hash}`;
+                            const albumParam = (song.album_id && song.album_id > 0) ? `&album_id=${song.album_id}` : '';
+                            webUrl = base + albumParam;
+                        }
+                        return {
+                            platform: 'kugou',
+                            platform_name: '酷狗',
+                            id: song.hash,
+                            title: song.songname,
+                            artist: song.singername || '',
+                            album: song.album_name || '',
+                            url_scheme: `kugou://song/${song.hash}`,
+                            url_web: webUrl
+                        };
+                    })
+                    .filter(song => isValidMusicEntry(song.title, song.artist));
             }
             return [];
         }
