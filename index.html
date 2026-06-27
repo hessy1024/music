@@ -40,24 +40,20 @@
     </div>
 
     <script>
-        // ========== 使用你自己的 Cloudflare Worker 代理 ==========
         const CORS_PROXY = 'https://music.1175199461.workers.dev/?url=';
 
         async function fetchWithProxy(url) {
-            // 先尝试直接请求（部分 API 可能已支持 CORS）
             try {
                 const directResp = await fetch(url);
                 if (directResp.ok) return directResp;
-            } catch (e) { /* 忽略，走代理 */ }
-
-            // 使用 Worker 代理
+            } catch (e) {}
             const proxyUrl = CORS_PROXY + encodeURIComponent(url);
             const resp = await fetch(proxyUrl);
             if (!resp.ok) throw new Error(`代理请求失败: ${resp.status}`);
             return resp;
         }
 
-        // ========== 平台搜索函数 ==========
+        // 网易云
         async function searchNetease(keyword) {
             const url = `https://music.163.com/api/search/get?type=1&s=${encodeURIComponent(keyword)}&limit=10`;
             const resp = await fetchWithProxy(url);
@@ -77,6 +73,7 @@
             return [];
         }
 
+        // QQ音乐
         async function searchQQ(keyword) {
             const url = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=10&w=${encodeURIComponent(keyword)}&format=json`;
             const resp = await fetchWithProxy(url);
@@ -96,8 +93,8 @@
             return [];
         }
 
+        // 酷狗（修复版）
         async function searchKugou(keyword) {
-            // 注意：酷狗 API 是 HTTP，Worker 会正常代理
             const url = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(keyword)}&page=1&pagesize=10&showtype=1`;
             const resp = await fetchWithProxy(url);
             const data = await resp.json();
@@ -109,16 +106,15 @@
                     title: song.songname,
                     artist: song.singername || '',
                     album: song.album_name || '',
-                    url_scheme: `kugou://song/${song.hash}`,
-                    url_web: `https://www.kugou.com/song/${song.hash}.html`
+                    // 修正后的 scheme 和 web 链接
+                    url_scheme: `kugou://song/${song.hash}`,  // 可能仍无效，但会回退到 web
+                    url_web: `https://www.kugou.com/song/#hash=${song.hash}&album_id=${song.album_id}`
                 }));
             }
             return [];
         }
 
-        // Spotify 暂未集成（需要后端 Token 刷新），你可以按需扩展
-
-        // ========== 聚合与归一化 ==========
+        // 归一化与聚合
         function normalize(text) {
             return text.toLowerCase()
                 .replace(/（[^）]*）/g, '')
@@ -146,7 +142,6 @@
             return Object.values(map).sort((a, b) => b.platforms.length - a.platforms.length);
         }
 
-        // ========== 搜索入口 ==========
         async function search() {
             const kw = document.getElementById('keyword').value.trim();
             if (!kw) return;
@@ -168,7 +163,6 @@
             }
         }
 
-        // ========== 渲染 ==========
         function render(songs) {
             const container = document.getElementById('results');
             if (!songs.length) {
@@ -181,7 +175,6 @@
                     <div class="song-title">${escapeHtml(song.title)}</div>
                     <div class="song-artist">${escapeHtml(song.artist)} · ${escapeHtml(song.album)}</div>
                     <div class="platform-tags">`;
-                // 按平台顺序展示
                 ['netease', 'qq', 'kugou', 'spotify'].forEach(plat => {
                     const found = song.platforms.find(p => p.platform === plat);
                     if (found) {
@@ -208,18 +201,15 @@
             return d.innerHTML;
         }
 
-        // ========== 深度链接唤起 ==========
         function tryScheme(e, scheme, webUrl) {
             e.preventDefault();
-            // 尝试唤起 App
             window.location.href = scheme;
-            // 如果 2 秒后页面仍存在，说明未安装 App，跳转网页版
             setTimeout(() => {
+                // 如果2秒后页面还在，说明没唤起App，跳转网页版
                 window.open(webUrl, '_blank');
             }, 2000);
         }
 
-        // 支持回车搜索
         document.getElementById('keyword').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') search();
         });
